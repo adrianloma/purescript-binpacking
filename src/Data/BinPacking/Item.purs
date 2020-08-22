@@ -1,19 +1,21 @@
 module Data.BinPacking.Item (module Data.BinPacking.Item) where
 
-import Data.Array
-import Data.Maybe
-import Data.Monoid.Additive
-import Prelude
+import Data.BinPacking.Types
 
-import Control.MonadZero (class Bind, empty, guard)
-import Data.Bounded (class Bounded, bottom)
+import Data.Array (all, deleteAt, drop, find, findIndex, findMap, foldl, head, singleton, snoc, sortBy, (!!))
+import Data.Maybe (Maybe(..), fromMaybe, isJust)
+import Data.Monoid.Additive (Additive(..))
+import Prelude
+import Data.Symbol (SProxy(..))
+
+import Control.MonadZero (guard)
 import Data.Enum (class Enum, upFromIncluding)
 import Data.Foldable (foldMap)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Bounded (genericBottom, genericTop)
 import Data.Generic.Rep.Enum (genericSucc, genericPred)
 import Data.Ord (abs)
-import Record (merge) as Record
+import Record (merge, delete) as Record
 
 type ItemRec r =
   ( name :: String
@@ -22,9 +24,10 @@ type ItemRec r =
   | r
   )
 
+
 type Item = { | ItemRec () }
 
-type ItemPositioned =
+type PositionedItem =
   { position :: Position
   , rotatedDim :: Dimensions
   , rotation :: Rotation
@@ -35,6 +38,18 @@ data Axis =
     WidthAxis
   | HeightAxis
   |  DepthAxis
+
+derive instance eqAxis :: Eq Axis
+derive instance ordAxis :: Ord Axis
+derive instance genericAxis :: Generic Axis _
+
+instance boundedAxis :: Bounded Axis where
+  top = genericTop
+  bottom = genericBottom
+
+instance enumAxis :: Enum Axis where
+  succ = genericSucc
+  pred = genericPred
 
 data Rotation =
     XYZ --   WHD
@@ -55,7 +70,7 @@ instance boundedRotation :: Bounded Rotation where
 instance enumRotation :: Enum Rotation where
   succ = genericSucc
   pred = genericPred
-  
+
 type Dimensions = Coordinates
 type Position = Coordinates
 type Coordinates =
@@ -73,35 +88,23 @@ type EmptyBinRec r =
 
 type EmptyBin = { | EmptyBinRec ()}
 
-type Bin = { positionedItems :: Array ItemPositioned
+type PackedBin = { positionedItems :: Array PositionedItem
            | EmptyBinRec ()
            }
 
-
-findFit :: (Bounded Rotation) => Bin -> Item -> Position -> Maybe ItemPositioned
-findFit bin item pivot = do
+findFit :: (Bounded Rotation) => EmptyBin -> Item -> Array PositionedItem -> Position -> Maybe PositionedItem
+findFit bin item positionedItems pivot = do
   -- check if exceeds weight
-  let (Additive binWeight) = foldMap (Additive <<< _.weight) bin.items
+  let (Additive binWeight) = foldMap (Additive <<< _.weight) positionedItems
   guard $ bin.maxWeight > binWeight + item.weight -- Fail if exceeds weight
-  -- check which (if any) rotation fits
-  let itemFits = \rotItem ->
-        bin.flatDim.x >= pivot.x + rotItem.rotatedDim.x
-        && bin.flatDim.y >= pivot.y + rotItem.rotatedDim.y
-        && bin.flatDim.z >= pivot.z + rotItem.rotatedDim.z
-  let itemAllRotations = filter itemFits $ getAllRotationsForPositionedItem item pivot
-  firstValidItemRotation itemAllRotations bin.items
-  where
-    firstValidItemRotation :: Array ItemPositioned -> Array ItemPositioned -> Maybe ItemPositioned
-    firstValidItemRotation positionedItems binItems =
-      case head positionedItems of
-        Just posItem -> if any (itemsIntersect posItem) binItems then
-                          firstValidItemRotation (drop 1 positionedItems) binItems
-                        else
-                          Just posItem 
-        _ -> Nothing
+  let itemAllRotations = makeRotationsForItemInBinWithPivot item bin pivot
+  -- Find first rotation that doesn't intersect with any binItem.
+  find
+    (\rotatedItem -> all (not $ itemsIntersect rotatedItem) positionedItems)
+    itemAllRotations
 
 
-itemsIntersect :: ItemPositioned -> ItemPositioned -> Boolean
+itemsIntersect :: PositionedItem -> PositionedItem -> Boolean
 itemsIntersect item1 item2 =
   intersectOn WidthAxis HeightAxis &&
   intersectOn WidthAxis DepthAxis &&
@@ -110,7 +113,7 @@ itemsIntersect item1 item2 =
     intersectOn = rectIntersect item1 item2
 
 
-rectIntersect :: ItemPositioned -> ItemPositioned -> Axis -> Axis -> Boolean
+rectIntersect :: PositionedItem -> PositionedItem -> Axis -> Axis -> Boolean
 rectIntersect item1 item2 axisX axisY =
   let
     getX = makeGetter axisX
@@ -131,12 +134,17 @@ rectIntersect item1 item2 axisX axisY =
         DepthAxis  -> _.z
 
 
-getAllRotationsForPositionedItem :: Item -> Position -> Array ItemPositioned
-getAllRotationsForPositionedItem item pivot = do
+makeRotationsForItemInBinWithPivot :: Item -> EmptyBin -> Position -> Array PositionedItem
+makeRotationsForItemInBinWithPivot item bin pivot = do
   rotation <- upFromIncluding (bottom :: Rotation)
-  pure $ Record.merge 
+  let rotatedDim = rotateDim item.flatDim rotation
+  guard $ -- Check if rotated item fits in bin.
+        bin.dim.x >= pivot.x + rotatedDim.x
+        && bin.dim.y >= pivot.y + rotatedDim.y
+        && bin.dim.z >= pivot.z + rotatedDim.z
+  pure $ Record.merge
     { position: pivot
-    , rotatedDim: rotateDim item.flatDim rotation
+    , rotatedDim: rotatedDim
     , rotation: rotation
     } item
   where
@@ -149,10 +157,10 @@ getAllRotationsForPositionedItem item pivot = do
         ZXY -> {x: dim.z, y: dim.x, z: dim.y}
         XZY -> {x: dim.x, y: dim.z, z: dim.y}
 
-pack :: Array EmptyBin -> Array Item -> Tuple (Array Bin) (UnpackedItem) -- 
-pack =
+pack :: Array EmptyBin -> Array Item -> Packed
+pack emptyBins itemsToPack =
   let
-    compareVolume = \dim1 dim2 -> compare 
+    compareVolume = \dim1 dim2 -> compare
                             (dim1.x * dim1.y * dim1.z)
                             (dim2.x * dim2.y * dim2.z)
     sortedBins = sortBy
@@ -160,102 +168,84 @@ pack =
                     emptyBins
     sortedItems = sortBy
                     (\item1 item2 -> compareVolume item1.flatDim item2.flatDim)
-                    items
-    -- find bin that fits first item
+                    itemsToPack
+    firstPackerStep = { emptyBins: sortedBins
+                      , pendingItems: sortedItems
+                      , packedBins: []
+                      , unPackableItems: []
+                      }
+    lastPackerStep = getFinalPackerStep firstPackerStep
   in
-   
-    -- if no bin fits item, add it to unpacked items
-    -- if bin found, pack bin with all remaining items
-    -- function returns packed bin and remaining items
-    -- with rest of bins and items, repeat until no more items or bins
-    -- use deleteAt 
-    -- use findIndex
-    -- use snoc (opposite of cons)
-type Accum = { emptyBins :: Array EmptyBin
-             , remainingItems :: Array Item
-             , packedBins :: Array Bin
-             , unPackableItems :: Array Item
-             }
-someFunc :: Accum -> Accum
-someFunc accum =
-  case head accum.remainingItems of
-    -- Finished all items
-    Nothing -> accum
-    -- Process with first item
-    Just firstItem ->
-      case getBinForItem emptyBins firstItem of
-        Just (Tuple3 firstPosItem emptyBin remainingBins) ->
-          let
-            Tuple packedBin remainingItems = packBin firstPos emptyBin (drop 1 accum.remainingItems)
-          in
-          -- Recursive call to process remaining items
-          someFunc accum { emptyBins : remainingBins
-                         , remainingItems : remainingItems
-                         , packedBins : snoc accum.packedBins packedBin
-                         }
-        Nothing ->
-          -- No bin was found for item.
-          -- Add to unpackables and remove from further processing.
-          someFunc accum { unPackableItems = snoc accum.unPackableItems firstItem
-                         , remainingItems: drop 1 accum.remainingItems
-                         }
+   Record.delete (SProxy :: SProxy "pendingItems") lastPackerStep
 
-getBinForItem emptyBins item =
-  do
-    binIndex <- findMap (\bin -> Tuple bin <$> findFit bin item {x: 0, y: 0, z: 0}) emptyBins
-    emptyBin <- emptyBins !! indexBin
-    remainingBins <- deleteAt indexBin emptyBins
-    firstPosItem <- findFit emptyBin item {x: 0, y: 0, z: 0}
-    Tuple3 firstPosItem emptyBin remainingBins
+type PackedRep r = ( emptyBins :: Array EmptyBin
+                       , packedBins :: Array PackedBin
+                       , unPackableItems :: Array Item
+                       | r
+                       )
 
-indexOfNextBin :: Item -> Array EmptyBin -> Maybe (Tuple EmptyBin ItemPositioned)
-indexOfNextBin item emptyBins =
-  
+type Packed = { | PackedRep ()}
 
-packBin :: Item -> EmptyBin -> Array Item -> Tuple Bin (Array Item)
-packBin firstItem emptyBin items =
-  let
-    mFirstItemPost = findFit emptyBin item {x: 0, y: 0, z: 0}
-  case mFirstItemPost of
-    Nothing -> error "The item should have already had a valid placement"
-    Just firstItemPos ->
-      let
-        firstStep = { bin: emptyBin
-                    , positionedItems: singleton firstItemPos
-                    , unfittedItems: []
-                    }
-        finalStep = foldl nextStep firstStep items
-      in
-        Tuple
-          (Record.merge finalStep.bin {positionedItems: finalStep.positionedItems})
-          finalStep.unfittedItems
+type PackerStep = { pendingItems :: Array Item | PackedRep () }
+
+getFinalPackerStep :: PackerStep -> PackerStep
+getFinalPackerStep  step@{pendingItems: []} = step
+getFinalPackerStep step =
+  case tryPackNextBin of
+    Just newStep -> getFinalPackerStep newStep
+    Nothing ->
+      -- No bin was found for item.
+      -- Add to unpackables and remove from further processing.
+      getFinalPackerStep step { unPackableItems= fromMaybe
+                                    step.unPackableItems
+                                    (snoc step.unPackableItems <$> head step.pendingItems)
+                              , pendingItems= drop 1 step.pendingItems
+                              }
+  where
+    tryPackNextBin =
+      do
+        firstItem <- head step.pendingItems
+        pendingItems <- Just $ drop 1 step.pendingItems
+        binIndex <- findIndex (\bin -> isJust $ findFit bin firstItem [] {x: 0, y: 0, z: 0}) step.emptyBins
+        emptyBin <- step.emptyBins !! binIndex
+        remainingBins <- deleteAt binIndex step.emptyBins
+        firstPosItem <- findFit emptyBin firstItem [] {x: 0, y: 0, z: 0}
+        let firstStep = { bin: emptyBin
+                        , positionedItems: singleton firstPosItem
+                        , unfittedItems: []
+                        }
+        let finalStep = foldl nextStep firstStep pendingItems
+        let packedBin = Record.merge finalStep.bin {positionedItems: finalStep.positionedItems}
+        pure $ step { emptyBins= remainingBins
+                     , pendingItems= finalStep.unfittedItems
+                     , packedBins= snoc step.packedBins packedBin
+                     }
 
 type BinPackingStep = { bin :: EmptyBin
-                      , positionedItems :: Array ItemPositioned
+                      , positionedItems :: Array PositionedItem
                       , unfittedItems :: Array Item -- items that didn't fit
                       }
 
 nextStep :: BinPackingStep -> Item -> BinPackingStep
 nextStep step currItem =
-  case positionItem currItem of
-    Nothing -> step {unfittedItems: snoc step.unfittedItems currItem}
-    Just posItem -> step {positionedItems: snoc step.positionedItems posItem}
+  case findPositionFor currItem of
+    Nothing -> step {unfittedItems= snoc step.unfittedItems currItem}
+    Just posItem -> step {positionedItems= snoc step.positionedItems posItem}
   where
-    positionItem item = findMap
-                          (\pivot -> findFit step.bin step.positionedItems pivot)
+    findPositionFor item = findMap
+                          (\pivot -> findFit step.bin currItem step.positionedItems pivot)
                           (generatePivots step.positionedItems)
-    generatePivots = do
+    generatePivots binItems = do
       axis <- upFromIncluding (bottom::Axis)
-      binItem <- bin.items
+      binItem <- binItems
       pure $ case axis of
-        WidthAxis -> binItem.position {x: binItem.position.x + binItem.rotatedDim.x}
-        HeightAxis -> binItem.position {y: binItem.position.y + binItem.rotatedDim.y}
-        DepthAxis -> binItem.position {y: binItem.position.y + binItem.rotatedDim.y}
-
+        WidthAxis -> binItem.position {x = binItem.position.x + binItem.rotatedDim.x}
+        HeightAxis -> binItem.position {y = binItem.position.y + binItem.rotatedDim.y}
+        DepthAxis -> binItem.position {z = binItem.position.z + binItem.rotatedDim.z}
 {-
 Overview of algorithm (paraphrased/copied from paper, and modified to fit the current context)
 
---------- Bin Packing
+--------- PackedBin Packing
 
 1. Background
 
