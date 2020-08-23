@@ -6,6 +6,7 @@ import Data.Enum (class Enum)
 import Data.Generic.Rep (class Generic)
 import Data.Generic.Rep.Bounded (genericBottom, genericTop)
 import Data.Generic.Rep.Enum (genericSucc, genericPred)
+import Data.Generic.Rep.Show (genericShow)
 
 
 {-
@@ -90,6 +91,9 @@ instance enumAxis :: Enum Axis where
   succ = genericSucc
   pred = genericPred
 
+instance showAxis :: Show Axis where
+  show = genericShow
+
 {-
 Rotation type and instances
 -}
@@ -112,6 +116,9 @@ instance boundedRotation :: Bounded Rotation where
 instance enumRotation :: Enum Rotation where
   succ = genericSucc
   pred = genericPred
+
+instance showRotation :: Show Rotation where
+  show = genericShow
 
 {-
 Coordiante types

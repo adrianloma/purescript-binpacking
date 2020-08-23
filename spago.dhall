@@ -13,7 +13,11 @@ You can edit this file as you like.
   , "lists"
   , "maybe"
   , "psci-support"
+  , "quickcheck"
+  , "quickcheck-laws"
   , "record"
+  , "spec"
+  , "spec-quickcheck"
   , "tuples"
   ]
 , packages = ./packages.dhall
