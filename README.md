@@ -75,7 +75,7 @@ I suspect there might be a simple way to make the types more polymorphic using o
 ### Expansion
 This library currently uses only one heuristic.
 It is based on the following paper and codebases:
-* [Optimizing three-dimensional bin packing through simulation](erick_dube_507-034.pdf)
+* [Optimizing three-dimensional bin packing through simulation](http://www.cs.ukzn.ac.za/publications/erick_dube_507-034.pdf)
 * https://github.com/bom-d-van/binpacking (Golang)
 * https://github.com/gedex/bp3d (Golang)
 * https://github.com/enzoruiz/3dbinpacking (Python)
