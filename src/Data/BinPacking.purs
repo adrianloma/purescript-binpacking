@@ -6,7 +6,7 @@ Overview of algorithm (paraphrased/copied from paper, and modified to fit the cu
 1. Background
 
 Bin packing is an NP-Hard problem. Solution is a heuristic based approach.
-The running time for Best Fit is O(n(log n)) and for First Fit Decreasing it  is O(n(log n)) excluding the running time for sorting.
+The running time for Best Fit is O(n(log n)) and for First Fit Decreasing it is O(n(log n)) excluding the running time for sorting (and disregarding the inneficiencies of translating the imperative algorithm to a functional context). This algorithm is a mixture of both approaches, and hence should run in O(n(log n)).
 
 We have three directions in which to pack the items (x, y, z). Each Item has six rotation types. Consider an item: The six rotation types can be obtained by rotating about the x, y and/or z axis as shown in Table 1: The bins are packed one at a time and the algorithms use a series of pivot points at which to pack the item.
 
@@ -73,34 +73,6 @@ As other implementations, it also considers weight limitations.
 module Data.BinPacking (module Re, module Data.BinPacking) where
 
 import Data.BinPacking.BinPackingInternal (pack) as Re
-import Data.BinPacking.Types (Bin, PackedBin, Item, PositionedItem, Packed) as Re
+import Data.BinPacking.Types (Bin, PackedBin, Item, PositionedItem, Packed
+                             , Dimensions, Coordinates, Position) as Re
 
-type PackedRep r = ( emptyBins :: Array Re.Bin
-                    , packedBins :: Array Re.PackedBin
-                    , unPackableItems :: Array Re.Item
-                    | r
-                    )
-
-testBins :: Array Re.Bin
-testBins = [ { name: "Small bin"
-              , dim: {x: 10, y: 15, z: 20}
-              , maxWeight: 100
-              }
-            , { name: "Medium Bin"
-              , dim: {x: 100, y: 150, z: 200}
-              , maxWeight: 1000
-              }
-            ]
-
-testItems :: Array Re.Item
-testItems = [ { name: "Item 1"
-              , flatDim: {x: 2, y: 2, z: 1}
-              , weight: 2
-              }
-            , { name: "Item 2"
-              , flatDim: {x: 3, y: 3, z: 2}
-              , weight: 3
-              }
-            ]
-
-testPack = Re.pack testBins testItems

@@ -1,25 +1,22 @@
 module Test.Main where
 
 import Prelude
-import Data.Maybe
+import Data.Maybe (Maybe(..))
 
 import Effect (Effect)
-import Effect.Aff (launchAff_, delay)
-import Effect.Class.Console (log, logShow)
+import Effect.Aff (launchAff_)
+import Effect.Class.Console (log)
 
-import Data.Time.Duration (Milliseconds(..))
-import Test.Spec (pending, describe, it, Spec)
+import Test.Spec (Spec, describe, it)
 import Test.Spec.Assertions (shouldEqual, shouldNotEqual)
 import Test.Spec.Reporter.Console (consoleReporter)
 import Test.Spec.Runner (runSpec)
 
-import Data.BinPacking.BinPackingInternal 
-import Data.BinPacking.Types
+import Data.BinPacking.BinPackingInternal (pack) 
 
-import Data.Array
-import Data.Foldable hiding (length)
+import Data.Array (head, length, replicate)
+import Data.Foldable (foldl)
 
-import Type.Proxy (Proxy(..), Proxy2(..))
 
 main :: Effect Unit
 main = do
@@ -119,3 +116,4 @@ compareSolutions = do
         mTotalVolume
             `shouldNotEqual`
             (Just $ foldl sumVolume 0 $ map _.flatDim (replicate itemsToRepeat currItem))
+

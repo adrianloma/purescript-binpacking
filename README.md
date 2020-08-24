@@ -14,8 +14,8 @@
     / _ _ _/_ _ _ _ _        / / _ _ _/_ _ _ _ _        /
     |     /           |     /  |     /           |     /
     |    /            |    /   |    /            |    /
-    |   /   Bin       |   /    |   /             |   /
-    |  /  Packing     |  /     |  /              |  /
+    |   / Bin         |   /    |   /             |   /
+    |  /   Packing    |  /     |  /              |  /
     | /     Solver    | /      | /               | /
     |/                |/       |/                |/
     | _ _ _ _ _ _ _ _ |        | _ _ _ _ _ _ _ _ |
@@ -52,21 +52,25 @@ testPack :: Packed
 testPack = pack testBins testItems
 ```
 
+
 ## Improvements
 
 ### Rewrite
-This is an implementation of a fundamentally imperative algorithm. There might be better ways to express this problem in a more functional way.
-This was also written by a novice in functional programming for fun.
+This is an implementation of my understanding of an imperative algorithm. There might be better ways to express this problem in a more functional way. Starting with the fact that this uses awkward imperative logic, like deleting elements from the middle of lists. 
+
+This was also written by a novice in functional programming. I would not call it "production ready" in any way, shape, or form. 
 
 ### Tests
 The codebase could be improved to allow more testing of seperate functions.
 
-I originally intended using quickcheck, but it involved getting around orphan instances. As of writing this, `purescript-jack` is not part of the package set this project uses. 
+I originally intended using quickcheck, but it involved getting around orphan instances. As of writing this, `purescript-jack` is not part of the package set this project uses, which seemed like an easier route.
+
+More (or any) examples of correct packing could be used. Possibly generated with the help of a library written in another language.
 
 ### Reusability
 I suspect there might be a simple way to make the types more polymorphic using open record types. In order to ensure the user that if they use an `Item UserItem` they will get `PositionedItem UserItem`.
 
-`Bin` and `Item` records are augmented to `PackedBin` and `PositionedItem`, and not re-constructed, so they should be somewhat polymorphic.
+`Bin` and `Item` records are augmented to `PackedBin` and `PositionedItem`, and not re-constructed. I hope this makes it easier to implement polymorphism once I understand how it's done.
 
 ### Expansion
 This library currently uses only one heuristic.
@@ -78,3 +82,8 @@ It is based on the following paper and codebases:
 
 Further heuristics and constraints could be considered.
 For example, porting this 1D binpacking library https://hackage.haskell.org/package/Binpack or mixed integer programming solutions.
+
+My notes on my understanding of the algorithm can be found in `src/Data/BinPacking.purs`.
+
+### Performance
+No idea. Haven't tested it.
